@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>團購管理助手</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased select-none pb-24">
+
+  <!-- 頂部狀態列 -->
+  <header class="bg-blue-600 text-white p-4 sticky top-0 z-30 shadow-md flex justify-between items-center">
+    <h1 class="text-xl font-bold tracking-wider">團購管理系統</h1>
+    <div class="flex gap-2">
+      <button id="btn-export-backup" class="text-xs bg-blue-700 hover:bg-blue-800 px-3 py-1.5 rounded-lg border border-blue-400">JSON備份</button>
+      <button id="btn-sync" class="text-xs bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg font-bold shadow">立即同步</button>
+    </div>
+  </header>
+
+  <!-- 頁面容器 -->
+  <main class="p-4 max-w-4xl mx-auto">
+    <!-- 模組區塊（透過 JS 動態切換） -->
+    <section id="view-products" class="tab-content block">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-bold">商品與即時庫存</h2>
+        <button onclick="openModal('modal-product')" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow">+ 新增商品</button>
+      </div>
+      <div id="list-products" class="space-y-3"></div>
+    </section>
+
+    <section id="view-orders" class="tab-content hidden">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-bold">客戶出貨訂單</h2>
+        <button onclick="openModal('modal-sales')" class="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow">+ 建立出貨單</button>
+      </div>
+      <div id="list-sales-orders" class="space-y-3"></div>
+    </section>
+
+    <section id="view-purchases" class="tab-content hidden">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-bold">廠商叫貨單 (進貨)</h2>
+        <button onclick="openModal('modal-purchase')" class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow">+ 建立叫貨單</button>
+      </div>
+      <div id="list-purchase-orders" class="space-y-3"></div>
+    </section>
+
+    <section id="view-members" class="tab-content hidden">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-bold">會員與廠商通訊錄</h2>
+        <div class="flex gap-2">
+          <button onclick="openModal('modal-customer')" class="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">+ 客戶</button>
+          <button onclick="openModal('modal-supplier')" class="bg-gray-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">+ 供應商</button>
+        </div>
+      </div>
+      <div id="list-members" class="space-y-3"></div>
+    </section>
+  </main>
+
+  <!-- 底部大按鈕導航（適合長輩手指點擊） -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 grid grid-cols-4 py-2 px-1 z-30 shadow-lg text-center">
+    <button onclick="switchTab('view-products')" class="text-blue-600 flex flex-col items-center">
+      <span class="text-xl">📦</span>
+      <span class="text-xs font-bold mt-1">商品庫存</span>
+    </button>
+    <button onclick="switchTab('view-orders')" class="text-slate-500 flex flex-col items-center">
+      <span class="text-xl">📋</span>
+      <span class="text-xs font-bold mt-1">客戶訂單</span>
+    </button>
+    <button onclick="switchTab('view-purchases')" class="text-slate-500 flex flex-col items-center">
+      <span class="text-xl">🚚</span>
+      <span class="text-xs font-bold mt-1">向廠商叫貨</span>
+    </button>
+    <button onclick="switchTab('view-members')" class="text-slate-500 flex flex-col items-center">
+      <span class="text-xl">👥</span>
+      <span class="text-xs font-bold mt-1">名冊通訊</span>
+    </button>
+  </nav>
+
+  <!-- 新增商品 Modal -->
+  <div id="modal-product" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+      <h3 class="text-lg font-bold mb-4">新增商品</h3>
+      <div class="space-y-3">
+        <input id="prod-name" type="text" placeholder="商品名稱 (例: 日本大草莓)" class="w-full border p-2.5 rounded-lg text-base">
+        <input id="prod-spec" type="text" placeholder="規格/單位 (例: 1箱 / 300g)" class="w-full border p-2.5 rounded-lg text-base">
+        <div class="grid grid-cols-2 gap-2">
+          <input id="prod-cost" type="number" placeholder="進貨成本" class="w-full border p-2.5 rounded-lg text-base">
+          <input id="prod-retail" type="number" placeholder="團購售價" class="w-full border p-2.5 rounded-lg text-base">
+        </div>
+        <input id="prod-stock" type="number" placeholder="初始庫存數量" class="w-full border p-2.5 rounded-lg text-base">
+      </div>
+      <div class="flex gap-2 mt-6">
+        <button onclick="closeModal('modal-product')" class="w-1/2 py-2.5 bg-slate-200 rounded-lg font-bold">取消</button>
+        <button onclick="saveProduct()" class="w-1/2 py-2.5 bg-blue-600 text-white rounded-lg font-bold">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
