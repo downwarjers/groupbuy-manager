@@ -7,7 +7,7 @@ db.version(1).stores({
   purchase_orders: 'id, po_number, status, is_deleted',
   purchase_items: 'id, purchase_order_id, product_id',
   sales_orders: 'id, so_number, status, is_deleted',
-  sales_items: 'id, sales_order_id, product_id'
+  sales_items: 'id, sales_order_id, product_id',
 });
 
 // 2. 認證金鑰管理（長輩一次性帶入）
@@ -25,13 +25,25 @@ const AUTH_TOKEN = checkAuthToken();
 
 // 3. Tab 切換機制
 function switchTab(tabId) {
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab-content').forEach((el) => {
+    return el.classList.add('hidden');
+  });
   document.getElementById(tabId).classList.remove('hidden');
   renderCurrentView();
 }
 
-function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.remove('hidden');
+  }
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.add('hidden');
+  }
+}
 
 // 4. 資料庫增刪改查邏輯
 async function saveProduct() {
@@ -41,7 +53,9 @@ async function saveProduct() {
   const retail = Number(document.getElementById('prod-retail').value) || 0;
   const stock = Number(document.getElementById('prod-stock').value) || 0;
 
-  if (!name) return alert('請填寫商品名稱');
+  if (!name) {
+    return alert('請填寫商品名稱');
+  }
 
   const newProduct = {
     id: crypto.randomUUID(),
@@ -52,7 +66,7 @@ async function saveProduct() {
     supplier_id: '',
     current_stock: stock,
     is_deleted: 0,
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
   };
 
   await db.products.add(newProduct);
@@ -65,11 +79,14 @@ async function renderProducts() {
   const products = await db.products.where('is_deleted').equals(0).toArray();
 
   if (products.length === 0) {
-    container.innerHTML = '<div class="text-center text-slate-400 py-8">目前無商品，請點擊上方新增。</div>';
+    container.innerHTML =
+      '<div class="text-center text-slate-400 py-8">目前無商品，請點擊上方新增。</div>';
     return;
   }
 
-  container.innerHTML = products.map(p => `
+  container.innerHTML = products
+    .map((p) => {
+      return `
     <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
       <div>
         <div class="font-bold text-base text-slate-900">${p.name} <span class="text-xs text-slate-500 font-normal">(${p.spec || '無規格'})</span></div>
@@ -83,11 +100,15 @@ async function renderProducts() {
         <button onclick="deleteProduct('${p.id}')" class="text-red-400 hover:text-red-600 text-xs px-2 py-1">刪除</button>
       </div>
     </div>
-  `).join('');
+  `;
+    })
+    .join('');
 }
 
 async function deleteProduct(id) {
-  if (!confirm('確定要刪除此商品？')) return;
+  if (!confirm('確定要刪除此商品？')) {
+    return;
+  }
   await db.products.update(id, { is_deleted: 1, updated_at: new Date().toISOString() });
   renderProducts();
 }
@@ -98,7 +119,9 @@ function renderCurrentView() {
 
 // 5. 雲端同步引擎 (Pull & Push)
 document.getElementById('btn-sync').addEventListener('click', async () => {
-  if (!AUTH_TOKEN) return alert('缺少金鑰！請使用長輩專屬開通網址開啟。');
+  if (!AUTH_TOKEN) {
+    return alert('缺少金鑰！請使用長輩專屬開通網址開啟。');
+  }
 
   const btn = document.getElementById('btn-sync');
   btn.textContent = '同步中...';
@@ -107,9 +130,11 @@ document.getElementById('btn-sync').addEventListener('click', async () => {
   try {
     // A. 先 Pull
     const pullRes = await fetch('./api/pull', {
-      headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` }
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
     });
-    if (!pullRes.ok) throw new Error('拉取失敗: ' + pullRes.statusText);
+    if (!pullRes.ok) {
+      throw new Error('拉取失敗: ' + pullRes.statusText);
+    }
     const pullData = await pullRes.json();
 
     // 更新本地快取
@@ -134,20 +159,22 @@ document.getElementById('btn-sync').addEventListener('click', async () => {
       purchaseOrders: await db.purchase_orders.toArray(),
       purchaseItems: await db.purchase_items.toArray(),
       salesOrders: await db.sales_orders.toArray(),
-      salesItems: await db.sales_items.toArray()
+      salesItems: await db.sales_items.toArray(),
     };
 
     const pushRes = await fetch('./api/push', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${AUTH_TOKEN}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${AUTH_TOKEN}`,
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(pushPayload)
+      body: JSON.stringify(pushPayload),
     });
 
     const pushResult = await pushRes.json();
-    if (!pushRes.ok) throw new Error(pushResult.message || pushResult.error);
+    if (!pushRes.ok) {
+      throw new Error(pushResult.message || pushResult.error);
+    }
 
     localStorage.setItem('lastUpdatedTimestamp', pushResult.newTimestamp);
     alert('同步成功！');
@@ -170,7 +197,7 @@ document.getElementById('btn-export-backup').addEventListener('click', async () 
     purchase_orders: await db.purchase_orders.toArray(),
     purchase_items: await db.purchase_items.toArray(),
     sales_orders: await db.sales_orders.toArray(),
-    sales_items: await db.sales_items.toArray()
+    sales_items: await db.sales_items.toArray(),
   };
 
   const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });

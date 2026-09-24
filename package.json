@@ -1,0 +1,14 @@
+{
+  "name": "groupbuy-manager",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev ./public --d1=DB=groupbuy-db",
+    "dev:remote": "wrangler pages dev ./public --d1=DB=groupbuy-db --remote",
+    "db:init:local": "wrangler d1 execute groupbuy-db --local --file=./schema.sql",
+    "db:init:remote": "wrangler d1 execute groupbuy-db --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.0"
+  }
+}
