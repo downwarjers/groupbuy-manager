@@ -1,4 +1,4 @@
-// 1. 初始化 Dexie 本地資料庫
+// 1. 初始化 Dexie 資料庫連線
 const db = new Dexie('GroupBuyLocalDB');
 db.version(2).stores({
   suppliers: 'id, name, phone, tel, is_deleted',
@@ -23,16 +23,16 @@ const AUTH_TOKEN = (() => {
 
 const SALES_STATUS_MAP = {
   PENDING: '待處理',
-  PREPARING: '配貨中',
-  SHIPPED: '已出貨',
-  COMPLETED: '已完成',
+  PREPARING: '備貨中',
+  SHIPPED: '已發貨',
+  COMPLETED: '已結案',
   CANCELLED: '已取消',
 };
 
 const PURCHASE_STATUS_MAP = {
-  PENDING: '待採購',
-  ORDERED: '已下單',
-  RECEIVED: '已到貨',
+  PENDING: '待叫貨',
+  ORDERED: '已叫貨',
+  RECEIVED: '已到庫',
   CANCELLED: '已取消',
 };
 
@@ -67,7 +67,6 @@ function switchTab(tabId) {
       }
     }
   });
-
   renderCurrentView();
 }
 
@@ -86,14 +85,15 @@ function closeModal(id) {
 }
 
 // ==========================================
-// 2. 商品模組 (新增 / 編輯 / 刪除 / 搜尋 / 排序)
+// 2. 商品管理邏輯
 // ==========================================
+
 function openProductModal(prodId = null) {
   document.getElementById('prod-id').value = prodId || '';
   document.getElementById('product-variants-container').innerHTML = '';
 
   if (prodId) {
-    document.getElementById('modal-product-title').textContent = '修改商品資料';
+    document.getElementById('modal-product-title').textContent = '編輯商品與規格';
     Promise.all([
       db.products.get(prodId),
       db.product_variants
@@ -120,7 +120,7 @@ function openProductModal(prodId = null) {
       openModal('modal-product');
     });
   } else {
-    document.getElementById('modal-product-title').textContent = '新增商品資料';
+    document.getElementById('modal-product-title').textContent = '新增商品品項';
     document.getElementById('prod-name').value = '';
     document.getElementById('prod-desc').value = '';
     addProductVariantRow('預設規格', 1, '個', 0, 0, 0);
@@ -142,18 +142,18 @@ function addProductVariantRow(
   const html = `
     <div id="${rowId}" class="p-2 border rounded-lg bg-slate-50 space-y-1 text-xs" data-variant-id="${variantId}">
       <div class="flex gap-2 items-center">
-        <input type="text" placeholder="規格名稱 (例: 紅 / XL)" value="${name}" class="var-name border p-1 rounded flex-1">
-        <input type="number" placeholder="數量" value="${qty}" class="var-unit-qty border p-1 rounded w-16">
+        <input type="text" placeholder="規格名 (如: 單入 / 箱裝 / XL)" value="${name}" class="var-name border p-1 rounded flex-1">
+        <input type="number" placeholder="單位量" value="${qty}" class="var-unit-qty border p-1 rounded w-16">
         <input list="common-units" placeholder="單位" value="${unit}" class="var-unit border p-1 rounded w-16">
         <datalist id="common-units">
-          <option value="個"><option value="包"><option value="箱"><option value="瓶"><option value="條"><option value="罐">
+          <option value="個"><option value="箱"><option value="包"><option value="盒"><option value="斤"><option value="組">
         </datalist>
         <button type="button" onclick="document.getElementById('${rowId}').remove()" class="text-red-500 font-bold px-1">✕</button>
       </div>
       <div class="flex gap-2">
-        <input type="number" placeholder="進價" value="${cost || ''}" class="var-cost border p-1 rounded flex-1">
-        <input type="number" placeholder="售價" value="${retail || ''}" class="var-retail border p-1 rounded flex-1">
-        <input type="number" placeholder="現有庫存" value="${stock || ''}" class="var-stock border p-1 rounded w-20">
+        <input type="number" placeholder="成本價" value="${cost || ''}" class="var-cost border p-1 rounded flex-1">
+        <input type="number" placeholder="零售價" value="${retail || ''}" class="var-retail border p-1 rounded flex-1">
+        <input type="number" placeholder="目前庫存" value="${stock || ''}" class="var-stock border p-1 rounded w-20">
       </div>
     </div>
   `;
@@ -164,13 +164,14 @@ async function saveProduct() {
   const prodId = document.getElementById('prod-id').value || crypto.randomUUID();
   const name = document.getElementById('prod-name').value.trim();
   const desc = document.getElementById('prod-desc').value.trim();
+
   if (!name) {
-    return alert('商品名稱必填');
+    return alert('商品名稱為必填');
   }
 
   const variantRows = document.querySelectorAll('#product-variants-container > div');
   if (variantRows.length === 0) {
-    return alert('請至少保留一個商品規格');
+    return alert('至少需設定一組規格 (SKU)');
   }
 
   const now = new Date().toISOString();
@@ -256,7 +257,7 @@ async function renderProducts() {
   });
 
   if (products.length === 0) {
-    container.innerHTML = '<div class="text-center text-slate-400 py-8">無符合條件商品</div>';
+    container.innerHTML = '<div class="text-center text-slate-400 py-8">查無符合商品資料</div>';
     return;
   }
 
@@ -275,35 +276,35 @@ async function renderProducts() {
       const variantListHtml = pVariants
         .map((v) => {
           return `
-      <div class="text-xs bg-slate-50 border border-slate-200 rounded p-1.5 flex justify-between mt-1">
-        <span><b>${v.spec_name}</b> (${v.unit_quantity}${v.unit_name}) - 售: $${v.retail_price} / 本: $${v.cost_price}</span>
-        <span class="font-bold ${v.current_stock <= 3 ? 'text-red-500' : 'text-slate-600'}">庫存: ${v.current_stock}</span>
-      </div>
-    `;
+        <div class="text-xs bg-slate-50 border border-slate-200 rounded p-1.5 flex justify-between mt-1">
+          <span><b>${v.spec_name}</b> (${v.unit_quantity}${v.unit_name}) - 售: $${v.retail_price} / 本: $${v.cost_price}</span>
+          <span class="font-bold ${v.current_stock <= 3 ? 'text-red-500' : 'text-slate-600'}">庫存: ${v.current_stock}</span>
+        </div>
+      `;
         })
         .join('');
 
       return `
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <div class="flex justify-between items-start">
-          <div>
-            <div class="font-bold text-base text-slate-900">${p.name}</div>
-            ${p.description ? `<div class="text-xs text-slate-500 mt-0.5">${p.description}</div>` : ''}
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          <div class="flex justify-between items-start">
+            <div>
+              <div class="font-bold text-base text-slate-900">${p.name}</div>
+              ${p.description ? `<div class="text-xs text-slate-500 mt-0.5">${p.description}</div>` : ''}
+            </div>
+            <div class="flex gap-2">
+              <button onclick="openProductModal('${p.id}')" class="text-blue-500 hover:text-blue-700 text-xs font-semibold">編輯</button>
+              <button onclick="deleteProduct('${p.id}')" class="text-red-400 hover:text-red-600 text-xs">刪除</button>
+            </div>
           </div>
-          <div class="flex gap-2">
-            <button onclick="openProductModal('${p.id}')" class="text-blue-500 hover:text-blue-700 text-xs font-semibold">修改</button>
-            <button onclick="deleteProduct('${p.id}')" class="text-red-400 hover:text-red-600 text-xs">刪除</button>
-          </div>
+          <div class="mt-2 space-y-1">${variantListHtml}</div>
         </div>
-        <div class="mt-2 space-y-1">${variantListHtml}</div>
-      </div>
-    `;
+      `;
     })
     .join('');
 }
 
 async function deleteProduct(id) {
-  if (!confirm('確認刪除該商品及其所有規格？')) {
+  if (!confirm('確認刪除此商品及所有連帶規格？')) {
     return;
   }
   const now = new Date().toISOString();
@@ -318,12 +319,13 @@ async function deleteProduct(id) {
 }
 
 // ==========================================
-// 3. 客戶與供應商名錄模組 (含修改、刪除)
+// 3. 顧客與供應商名單管理
 // ==========================================
+
 function openCustomerModal(id = null) {
   document.getElementById('cust-id').value = id || '';
   if (id) {
-    document.getElementById('modal-customer-title').textContent = '修改客戶資料';
+    document.getElementById('modal-customer-title').textContent = '編輯顧客資料';
     db.customers.get(id).then((c) => {
       document.getElementById('cust-name').value = c.name;
       document.getElementById('cust-phone').value = c.phone || '';
@@ -335,7 +337,7 @@ function openCustomerModal(id = null) {
       openModal('modal-customer');
     });
   } else {
-    document.getElementById('modal-customer-title').textContent = '新增客戶資料';
+    document.getElementById('modal-customer-title').textContent = '新增顧客資料';
     document.getElementById('cust-name').value = '';
     document.getElementById('cust-phone').value = '';
     document.getElementById('cust-tel').value = '';
@@ -358,7 +360,7 @@ async function saveCustomer() {
   const note = document.getElementById('cust-note').value.trim();
 
   if (!name || !phone) {
-    return alert('姓名與手機號碼為必填');
+    return alert('姓名與手機號碼為必填欄位');
   }
 
   await db.customers.put({
@@ -379,7 +381,7 @@ async function saveCustomer() {
 }
 
 async function deleteCustomer(id) {
-  if (!confirm('確認刪除此客戶資料？')) {
+  if (!confirm('確認刪除此顧客資料？')) {
     return;
   }
   await db.customers.update(id, { is_deleted: 1, updated_at: new Date().toISOString() });
@@ -389,7 +391,7 @@ async function deleteCustomer(id) {
 function openSupplierModal(id = null) {
   document.getElementById('sup-id').value = id || '';
   if (id) {
-    document.getElementById('modal-supplier-title').textContent = '修改供應商資料';
+    document.getElementById('modal-supplier-title').textContent = '編輯供應商資料';
     db.suppliers.get(id).then((s) => {
       document.getElementById('sup-name').value = s.name;
       document.getElementById('sup-contact').value = s.contact_person || '';
@@ -421,7 +423,7 @@ async function saveSupplier() {
   const address = document.getElementById('sup-address').value.trim();
 
   if (!name) {
-    return alert('廠商名稱必填');
+    return alert('廠商名稱為必填');
   }
   if (!tel && !phone) {
     return alert('市話或手機請至少填寫一項');
@@ -472,6 +474,7 @@ async function renderMembers() {
         (c.address && c.address.toLowerCase().includes(searchKeyword))
       );
     });
+
     suppliers = suppliers.filter((s) => {
       return (
         s.name.toLowerCase().includes(searchKeyword) ||
@@ -488,6 +491,7 @@ async function renderMembers() {
       ? a.name.localeCompare(b.name, 'zh-Hant')
       : b.updated_at.localeCompare(a.updated_at);
   });
+
   suppliers.sort((a, b) => {
     return sortMode === 'name_asc'
       ? a.name.localeCompare(b.name, 'zh-Hant')
@@ -506,13 +510,13 @@ async function renderMembers() {
         <div class="text-slate-500">地址: ${c.address || '無'}</div>
       </div>
       <div class="flex gap-2">
-        <button onclick="openCustomerModal('${c.id}')" class="text-blue-600 font-semibold px-1">修改</button>
+        <button onclick="openCustomerModal('${c.id}')" class="text-blue-600 font-semibold px-1">編輯</button>
         <button onclick="deleteCustomer('${c.id}')" class="text-red-500 font-semibold px-1">刪除</button>
       </div>
     </div>
   `;
       })
-      .join('') || '<div class="text-slate-400 text-xs">無客戶資料</div>';
+      .join('') || '<div class="text-slate-400 text-xs">查無顧客資料</div>';
 
   document.getElementById('list-suppliers').innerHTML =
     suppliers
@@ -520,23 +524,24 @@ async function renderMembers() {
         return `
     <div class="bg-white p-3 rounded-lg border border-slate-200 text-xs flex justify-between items-start">
       <div class="space-y-1">
-        <div class="font-bold text-slate-800 text-sm">${s.name} (聯絡人: ${s.contact_person || '無'})</div>
-        <div class="text-slate-600">市話: ${s.tel || '無'} | 手機: ${s.phone || '無'}</div>
+        <div class="font-bold text-slate-800 text-sm">${s.name} (窗口: ${s.contact_person || '未指定'})</div>
+        <div class="text-slate-600">電話: ${s.tel || '無'} | 手機: ${s.phone || '無'}</div>
         <div class="text-slate-500">信箱: ${s.email || '無'} | 地址: ${s.address || '無'}</div>
       </div>
       <div class="flex gap-2">
-        <button onclick="openSupplierModal('${s.id}')" class="text-blue-600 font-semibold px-1">修改</button>
+        <button onclick="openSupplierModal('${s.id}')" class="text-blue-600 font-semibold px-1">編輯</button>
         <button onclick="deleteSupplier('${s.id}')" class="text-red-500 font-semibold px-1">刪除</button>
       </div>
     </div>
   `;
       })
-      .join('') || '<div class="text-slate-400 text-xs">無供應商資料</div>';
+      .join('') || '<div class="text-slate-400 text-xs">查無廠商資料</div>';
 }
 
 // ==========================================
-// 4. 即時供需缺額計算引擎 (Real-time Computed)
+// 4. 即時庫存需求聯動與品項選擇核心
 // ==========================================
+
 let activeVariantsCache = [];
 
 async function refreshVariantsCache() {
@@ -544,6 +549,7 @@ async function refreshVariantsCache() {
     db.products.where('is_deleted').equals(0).toArray(),
     db.product_variants.where('is_deleted').equals(0).toArray(),
   ]);
+
   const pMap = new Map(
     products.map((p) => {
       return [p.id, p.name];
@@ -551,10 +557,12 @@ async function refreshVariantsCache() {
   );
   activeVariantsCache = variants.map((v) => {
     const pName = pMap.get(v.product_id) || '未知商品';
+    const fullLabel = `【${pName}】${v.spec_name} (${v.unit_quantity}${v.unit_name})`;
     return {
       ...v,
       productName: pName,
-      displayName: `【${pName}】${v.spec_name} (${v.unit_quantity}${v.unit_name})`,
+      fullLabel: fullLabel,
+      displayName: `📦 ${pName} ${v.spec_name} (${v.unit_quantity}${v.unit_name})`,
     };
   });
 }
@@ -564,6 +572,7 @@ async function getVariantDisplayMap() {
     db.products.toArray(),
     db.product_variants.toArray(),
   ]);
+
   const pMap = new Map(
     products.map((p) => {
       return [p.id, p.name];
@@ -572,15 +581,11 @@ async function getVariantDisplayMap() {
   const displayMap = new Map();
   variants.forEach((v) => {
     const pName = pMap.get(v.product_id) || '未知商品';
-    displayMap.set(v.id, `【${pName}】${v.spec_name} (${v.unit_quantity}${v.unit_name})`);
+    displayMap.set(v.id, `📦 ${pName} ${v.spec_name} (${v.unit_quantity}${v.unit_name})`);
   });
   return displayMap;
 }
 
-/**
- * 即時計算所有規格的供需平衡與全域缺額
- * 缺額 = max(0, 客戶需求總量 - 採購叫貨總量 - 現有庫存)
- */
 async function computeRealtimeShortages() {
   const [salesOrders, salesItems, purchaseOrders, purchaseItems, variants, products] =
     await Promise.all([
@@ -603,7 +608,7 @@ async function computeRealtimeShortages() {
     const pName = pMap.get(v.product_id) || '未知商品';
     balanceMap.set(v.id, {
       variantId: v.id,
-      displayName: `【${pName}】${v.spec_name} (${v.unit_quantity}${v.unit_name})`,
+      displayName: `📦 ${pName} ${v.spec_name} (${v.unit_quantity}${v.unit_name})`,
       costPrice: v.cost_price,
       stock: v.current_stock || 0,
       demand: 0,
@@ -612,7 +617,6 @@ async function computeRealtimeShortages() {
     });
   });
 
-  // 聚合有效銷售需求 (排除已取消與已完成的訂單)
   const activeSoIds = new Set(
     salesOrders
       .filter((o) => {
@@ -622,14 +626,12 @@ async function computeRealtimeShortages() {
         return o.id;
       }),
   );
-
   salesItems.forEach((item) => {
     if (activeSoIds.has(item.sales_order_id) && balanceMap.has(item.variant_id)) {
       balanceMap.get(item.variant_id).demand += item.quantity;
     }
   });
 
-  // 聚合有效採購供給量 (排除已取消的叫貨單)
   const activePoIds = new Set(
     purchaseOrders
       .filter((o) => {
@@ -639,14 +641,12 @@ async function computeRealtimeShortages() {
         return o.id;
       }),
   );
-
   purchaseItems.forEach((item) => {
     if (activePoIds.has(item.purchase_order_id) && balanceMap.has(item.variant_id)) {
       balanceMap.get(item.variant_id).supply += item.quantity;
     }
   });
 
-  // 動態推算缺額
   balanceMap.forEach((item) => {
     const net = item.demand - item.supply - item.stock;
     item.shortage = Math.max(0, net);
@@ -657,35 +657,48 @@ async function computeRealtimeShortages() {
 
 function addOrderItemRow(type, selectedVariantId = '', qty = 1, price = null) {
   const container = document.getElementById(`${type}-items-container`);
-  const rowId = `item-${crypto.randomUUID()}`;
+  const uuid = crypto.randomUUID();
+  const rowId = `item-${uuid}`;
+  const datalistId = `dl-${uuid}`;
 
-  const grouped = {};
-  activeVariantsCache.forEach((v) => {
-    if (!grouped[v.productName]) {
-      grouped[v.productName] = [];
-    }
-    grouped[v.productName].push(v);
+  // 依繁體中文字典順序排列商品
+  const sortedVariants = [...activeVariantsCache].sort((a, b) => {
+    return a.fullLabel.localeCompare(b.fullLabel, 'zh-Hant');
   });
 
-  let optionsHtml = '<option value="">-- 請選擇商品與規格 --</option>';
-  for (const [prodName, vars] of Object.entries(grouped)) {
-    optionsHtml += `<optgroup label="📦 ${prodName}">`;
-    vars.forEach((v) => {
-      optionsHtml += `<option value="${v.id}" data-cost="${v.cost_price}" data-retail="${v.retail_price}" ${v.id === selectedVariantId ? 'selected' : ''}>
-        ${v.spec_name} (${v.unit_quantity}${v.unit_name})
-      </option>`;
-    });
-    optionsHtml += `</optgroup>`;
-  }
+  let selectedText = '';
+  let defaultPrice = price !== null ? price : 0;
 
-  const initialPrice = price !== null ? price : 0;
+  let optionsHtml = '';
+  sortedVariants.forEach((v) => {
+    const priceTag = type === 'sales' ? `零售:$${v.retail_price}` : `成本:$${v.cost_price}`;
+    const labelText = `${v.fullLabel} [${priceTag}]`;
+    if (v.id === selectedVariantId) {
+      selectedText = labelText;
+      if (price === null) {
+        defaultPrice = type === 'sales' ? v.retail_price : v.cost_price;
+      }
+    }
+    optionsHtml += `<option value="${labelText}" data-id="${v.id}" data-cost="${v.cost_price}" data-retail="${v.retail_price}"></option>`;
+  });
+
+  const initialPrice = defaultPrice;
   const initialSubtotal = qty * initialPrice;
 
   const html = `
     <div id="${rowId}" class="flex gap-2 items-center text-xs">
-      <select class="item-variant border p-1.5 rounded flex-1" onchange="updateRowPrice('${rowId}', '${type}')">
+      <input type="hidden" class="item-variant-id" value="${selectedVariantId}">
+      <input 
+        type="text" 
+        list="${datalistId}" 
+        value="${selectedText}" 
+        placeholder="搜尋商品名稱 / 規格..." 
+        class="item-variant-search border p-1.5 rounded flex-1 min-w-0" 
+        oninput="handleVariantInput('${rowId}', '${datalistId}', '${type}')"
+      >
+      <datalist id="${datalistId}">
         ${optionsHtml}
-      </select>
+      </datalist>
       <input type="number" value="${qty}" min="1" class="item-qty border p-1.5 rounded w-16" oninput="calculateTotal('${type}')">
       <input type="number" value="${initialPrice}" class="item-price border p-1.5 rounded w-20" oninput="calculateTotal('${type}')">
       <span class="item-subtotal font-semibold w-16 text-right">$${initialSubtotal}</span>
@@ -693,23 +706,25 @@ function addOrderItemRow(type, selectedVariantId = '', qty = 1, price = null) {
     </div>
   `;
   container.insertAdjacentHTML('beforeend', html);
-
-  if (price === null && selectedVariantId) {
-    updateRowPrice(rowId, type);
-  } else {
-    calculateTotal(type);
-  }
+  calculateTotal(type);
 }
 
-function updateRowPrice(rowId, type) {
+function handleVariantInput(rowId, datalistId, type) {
   const row = document.getElementById(rowId);
-  const select = row.querySelector('.item-variant');
-  const selectedOpt = select.options[select.selectedIndex];
+  const input = row.querySelector('.item-variant-search');
+  const hidden = row.querySelector('.item-variant-id');
   const priceInput = row.querySelector('.item-price');
+  const datalist = document.getElementById(datalistId);
 
-  if (selectedOpt && selectedOpt.dataset) {
+  const matchedOpt = Array.from(datalist.options).find((opt) => {
+    return opt.value === input.value;
+  });
+  if (matchedOpt) {
+    hidden.value = matchedOpt.dataset.id;
     priceInput.value =
-      type === 'sales' ? selectedOpt.dataset.retail || 0 : selectedOpt.dataset.cost || 0;
+      type === 'sales' ? matchedOpt.dataset.retail || 0 : matchedOpt.dataset.cost || 0;
+  } else {
+    hidden.value = '';
   }
   calculateTotal(type);
 }
@@ -730,29 +745,56 @@ function calculateTotal(type) {
 }
 
 // ==========================================
-// 5. 出貨訂單維護 (Master-Detail、修改、刪除)
+// 5. 銷售訂單管理 (Master-Detail)
 // ==========================================
+
+function handleCustomerSelect() {
+  const input = document.getElementById('sales-customer-input');
+  const hidden = document.getElementById('sales-customer-id');
+  const datalist = document.getElementById('sales-customer-datalist');
+  const matched = Array.from(datalist.options).find((o) => {
+    return o.value === input.value;
+  });
+  hidden.value = matched ? matched.dataset.id : '';
+}
+
 async function openSalesModal(soId = null) {
   await refreshVariantsCache();
   const customers = await db.customers.where('is_deleted').equals(0).toArray();
-  const select = document.getElementById('sales-customer-select');
-  select.innerHTML =
-    '<option value="">選擇客戶 *</option>' +
-    customers
-      .map((c) => {
-        return `<option value="${c.id}">${c.name} (${c.phone})</option>`;
-      })
-      .join('');
+  customers.sort((a, b) => {
+    return a.name.localeCompare(b.name, 'zh-Hant');
+  });
+
+  const customerDatalist = document.getElementById('sales-customer-datalist');
+  customerDatalist.innerHTML = customers
+    .map((c) => {
+      return `<option data-id="${c.id}" value="${c.name} (${c.phone})"></option>`;
+    })
+    .join('');
+
+  const custInput = document.getElementById('sales-customer-input');
+  const custIdHidden = document.getElementById('sales-customer-id');
+  custInput.value = '';
+  custIdHidden.value = '';
+
   document.getElementById('sales-items-container').innerHTML = '';
 
   if (soId) {
-    document.getElementById('modal-sales-title').textContent = '修改客戶出貨訂單';
+    document.getElementById('modal-sales-title').textContent = '編輯銷貨訂單';
     document.getElementById('sales-order-id').value = soId;
     const [order, items] = await Promise.all([
       db.sales_orders.get(soId),
       db.sales_items.where('sales_order_id').equals(soId).toArray(),
     ]);
-    select.value = order.customer_id;
+
+    custIdHidden.value = order.customer_id;
+    const targetCust = customers.find((c) => {
+      return c.id === order.customer_id;
+    });
+    if (targetCust) {
+      custInput.value = `${targetCust.name} (${targetCust.phone})`;
+    }
+
     document.getElementById('sales-order-datetime').value = order.order_date;
     document.getElementById('sales-order-status').value = order.status;
 
@@ -761,41 +803,42 @@ async function openSalesModal(soId = null) {
     });
     calculateTotal('sales');
   } else {
-    document.getElementById('modal-sales-title').textContent = '建立客戶出貨訂單';
+    document.getElementById('modal-sales-title').textContent = '建立銷貨訂單';
     document.getElementById('sales-order-id').value = '';
     document.getElementById('sales-order-datetime').value = getLocalDatetimeString();
     document.getElementById('sales-order-status').value = 'PENDING';
     addOrderItemRow('sales');
     calculateTotal('sales');
   }
-
   openModal('modal-sales');
 }
 
 async function saveSalesOrder() {
   const soId = document.getElementById('sales-order-id').value || crypto.randomUUID();
   const isEditing = !!document.getElementById('sales-order-id').value;
-  const customerId = document.getElementById('sales-customer-select').value;
+
+  const customerId = document.getElementById('sales-customer-id').value;
+  if (!customerId) {
+    return alert('請選擇有效的客戶（請從清單選取或搜尋完整資訊）');
+  }
+
   const orderDatetime =
     document.getElementById('sales-order-datetime').value || getLocalDatetimeString();
   const status = document.getElementById('sales-order-status').value;
 
-  if (!customerId) {
-    return alert('必須選擇客戶');
-  }
-
   const rows = document.querySelectorAll('#sales-items-container > div');
   if (rows.length === 0) {
-    return alert('訂單品項不可為空');
+    return alert('至少需加入一項商品');
   }
 
   let totalAmount = 0;
   const detailItems = [];
 
   for (const r of rows) {
-    const variantId = r.querySelector('.item-variant').value;
+    const variantId = r.querySelector('.item-variant-id').value;
     const qty = Number(r.querySelector('.item-qty').value) || 0;
     const price = Number(r.querySelector('.item-price').value) || 0;
+
     if (!variantId || qty <= 0) {
       continue;
     }
@@ -813,7 +856,7 @@ async function saveSalesOrder() {
   }
 
   if (detailItems.length === 0) {
-    return alert('請選擇正確品項與數量');
+    return alert('請確認品項是否已選取有效規格與輸入數量');
   }
 
   await db.transaction('rw', db.sales_orders, db.sales_items, async () => {
@@ -845,7 +888,7 @@ async function saveSalesOrder() {
 }
 
 async function deleteSalesOrder(id) {
-  if (!confirm('確認刪除此筆出貨訂單？')) {
+  if (!confirm('確認刪除此筆銷售訂單？')) {
     return;
   }
   const now = new Date().toISOString();
@@ -883,10 +926,10 @@ async function renderSalesOrders() {
 
   if (searchKeyword) {
     orders = orders.filter((o) => {
+      const custName = custMap.get(o.customer_id) || '';
       return (
         o.so_number.toLowerCase().includes(searchKeyword) ||
-        (custMap.get(o.customer_id) &&
-          custMap.get(o.customer_id).toLowerCase().includes(searchKeyword))
+        custName.toLowerCase().includes(searchKeyword)
       );
     });
   }
@@ -905,7 +948,7 @@ async function renderSalesOrders() {
   });
 
   if (orders.length === 0) {
-    container.innerHTML = '<div class="text-center text-slate-400 py-8">無符合條件的出貨訂單</div>';
+    container.innerHTML = '<div class="text-center text-slate-400 py-8">查無銷貨訂單</div>';
     return;
   }
 
@@ -928,11 +971,11 @@ async function renderSalesOrders() {
           const isShort = balance && balance.shortage > 0;
           return `
         <div class="text-xs text-slate-600 flex justify-between items-center py-0.5">
-          <span class="font-medium text-slate-800">${varMap.get(d.variant_id) || '未知商品'}</span>
+          <span class="font-medium text-slate-800">${varMap.get(d.variant_id) || '未知規格'}</span>
           <div class="flex gap-2 items-center">
             <span>數量: ${d.quantity}</span>
             <span class="text-[10px] px-1.5 py-0.5 rounded ${isShort ? 'bg-red-50 text-red-600 font-semibold' : 'bg-slate-100 text-slate-500'}">
-              ${isShort ? `全域缺 ${balance.shortage}` : '供貨足'}
+              ${isShort ? `總缺口 ${balance.shortage}` : '貨況正常'}
             </span>
             <span class="font-semibold text-slate-700">$${d.subtotal}</span>
           </div>
@@ -946,17 +989,17 @@ async function renderSalesOrders() {
       return `
       <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
         <div class="flex justify-between items-center text-sm">
-          <span class="font-bold text-slate-900">${custMap.get(o.customer_id) || '未知客戶'} <span class="text-xs text-slate-400">(${o.so_number})</span></span>
+          <span class="font-bold text-slate-900">${custMap.get(o.customer_id) || '未知顧客'} <span class="text-xs text-slate-400">(${o.so_number})</span></span>
           <div class="flex items-center gap-2">
             <span class="text-[11px] px-2 py-0.5 rounded font-bold ${statusColorMap[o.status] || 'bg-slate-100'}">${statusText}</span>
-            <button onclick="openSalesModal('${o.id}')" class="text-blue-600 font-semibold text-xs">修改</button>
+            <button onclick="openSalesModal('${o.id}')" class="text-blue-600 font-semibold text-xs">編輯</button>
             <button onclick="deleteSalesOrder('${o.id}')" class="text-red-400 hover:text-red-600 text-xs">刪除</button>
           </div>
         </div>
         <div class="border-t border-b py-2 space-y-1">${detailHtml}</div>
         <div class="flex justify-between items-center text-xs">
-          <span class="text-slate-400">時間: ${o.order_date.replace('T', ' ')}</span>
-          <span class="text-sm font-bold text-emerald-600">總額: $${o.total_amount}</span>
+          <span class="text-slate-400">下單時間: ${o.order_date.replace('T', ' ')}</span>
+          <span class="text-sm font-bold text-emerald-600">總計: $${o.total_amount}</span>
         </div>
       </div>
     `;
@@ -965,29 +1008,56 @@ async function renderSalesOrders() {
 }
 
 // ==========================================
-// 6. 叫貨單維護 (Master-Detail、修改、刪除)
+// 6. 廠商採購叫貨管理 (Master-Detail)
 // ==========================================
+
+function handleSupplierSelect() {
+  const input = document.getElementById('purchase-supplier-input');
+  const hidden = document.getElementById('purchase-supplier-id');
+  const datalist = document.getElementById('purchase-supplier-datalist');
+  const matched = Array.from(datalist.options).find((o) => {
+    return o.value === input.value;
+  });
+  hidden.value = matched ? matched.dataset.id : '';
+}
+
 async function openPurchaseModal(poId = null) {
   await refreshVariantsCache();
   const suppliers = await db.suppliers.where('is_deleted').equals(0).toArray();
-  const select = document.getElementById('purchase-supplier-select');
-  select.innerHTML =
-    '<option value="">選擇供應商 *</option>' +
-    suppliers
-      .map((s) => {
-        return `<option value="${s.id}">${s.name}</option>`;
-      })
-      .join('');
+  suppliers.sort((a, b) => {
+    return a.name.localeCompare(b.name, 'zh-Hant');
+  });
+
+  const supplierDatalist = document.getElementById('purchase-supplier-datalist');
+  supplierDatalist.innerHTML = suppliers
+    .map((s) => {
+      return `<option data-id="${s.id}" value="${s.name} (${s.tel || s.phone || '無電話'})"></option>`;
+    })
+    .join('');
+
+  const supInput = document.getElementById('purchase-supplier-input');
+  const supIdHidden = document.getElementById('purchase-supplier-id');
+  supInput.value = '';
+  supIdHidden.value = '';
+
   document.getElementById('purchase-items-container').innerHTML = '';
 
   if (poId) {
-    document.getElementById('modal-purchase-title').textContent = '修改供應商叫貨單';
+    document.getElementById('modal-purchase-title').textContent = '編輯採購訂單';
     document.getElementById('purchase-order-id').value = poId;
     const [order, items] = await Promise.all([
       db.purchase_orders.get(poId),
       db.purchase_items.where('purchase_order_id').equals(poId).toArray(),
     ]);
-    select.value = order.supplier_id;
+
+    supIdHidden.value = order.supplier_id;
+    const targetSup = suppliers.find((s) => {
+      return s.id === order.supplier_id;
+    });
+    if (targetSup) {
+      supInput.value = `${targetSup.name} (${targetSup.tel || targetSup.phone || '無電話'})`;
+    }
+
     document.getElementById('purchase-order-datetime').value = order.order_date;
     document.getElementById('purchase-order-status').value = order.status;
 
@@ -996,37 +1066,38 @@ async function openPurchaseModal(poId = null) {
     });
     calculateTotal('purchase');
   } else {
-    document.getElementById('modal-purchase-title').textContent = '建立供應商叫貨單';
+    document.getElementById('modal-purchase-title').textContent = '建立採購訂單';
     document.getElementById('purchase-order-id').value = '';
     document.getElementById('purchase-order-datetime').value = getLocalDatetimeString();
     document.getElementById('purchase-order-status').value = 'PENDING';
     addOrderItemRow('purchase');
     calculateTotal('purchase');
   }
-
   openModal('modal-purchase');
 }
 
 async function savePurchaseOrder() {
   const poId = document.getElementById('purchase-order-id').value || crypto.randomUUID();
   const isEditing = !!document.getElementById('purchase-order-id').value;
-  const supplierId = document.getElementById('purchase-supplier-select').value;
+
+  const supplierId = document.getElementById('purchase-supplier-id').value;
+  if (!supplierId) {
+    return alert('請選擇有效的供應商（請從清單選取或搜尋完整資訊）');
+  }
+
   const orderDatetime =
     document.getElementById('purchase-order-datetime').value || getLocalDatetimeString();
   const status = document.getElementById('purchase-order-status').value;
-
-  if (!supplierId) {
-    return alert('必須選擇供應商');
-  }
 
   const rows = document.querySelectorAll('#purchase-items-container > div');
   let totalCost = 0;
   const detailItems = [];
 
   for (const r of rows) {
-    const variantId = r.querySelector('.item-variant').value;
+    const variantId = r.querySelector('.item-variant-id').value;
     const qty = Number(r.querySelector('.item-qty').value) || 0;
     const price = Number(r.querySelector('.item-price').value) || 0;
+
     if (!variantId || qty <= 0) {
       continue;
     }
@@ -1044,7 +1115,7 @@ async function savePurchaseOrder() {
   }
 
   if (detailItems.length === 0) {
-    return alert('叫貨明細不可為空');
+    return alert('請確認叫貨品項是否已選取有效規格與輸入數量');
   }
 
   await db.transaction('rw', [db.purchase_orders, db.purchase_items], async () => {
@@ -1073,11 +1144,11 @@ async function savePurchaseOrder() {
 
   closeModal('modal-purchase');
   renderPurchaseOrders();
-  renderSalesOrders(); // 畫面重繪時自動反映最新全域供需平衡
+  renderSalesOrders();
 }
 
 async function deletePurchaseOrder(id) {
-  if (!confirm('確認刪除此筆叫貨單？')) {
+  if (!confirm('確認刪除此筆採購訂單？')) {
     return;
   }
   const now = new Date().toISOString();
@@ -1117,10 +1188,10 @@ async function renderPurchaseOrders() {
 
   if (searchKeyword) {
     orders = orders.filter((o) => {
+      const supName = supMap.get(o.supplier_id) || '';
       return (
         o.po_number.toLowerCase().includes(searchKeyword) ||
-        (supMap.get(o.supplier_id) &&
-          supMap.get(o.supplier_id).toLowerCase().includes(searchKeyword))
+        supName.toLowerCase().includes(searchKeyword)
       );
     });
   }
@@ -1139,7 +1210,7 @@ async function renderPurchaseOrders() {
   });
 
   if (orders.length === 0) {
-    container.innerHTML = '<div class="text-center text-slate-400 py-8">無符合條件的叫貨單</div>';
+    container.innerHTML = '<div class="text-center text-slate-400 py-8">查無採購記錄</div>';
     return;
   }
 
@@ -1159,9 +1230,9 @@ async function renderPurchaseOrders() {
         .map((d) => {
           return `
       <div class="text-xs text-slate-600 flex justify-between items-center py-0.5">
-        <span class="font-medium text-slate-800">${varMap.get(d.variant_id) || '未知商品'}</span>
+        <span class="font-medium text-slate-800">${varMap.get(d.variant_id) || '未知規格'}</span>
         <div>
-          <span class="mr-2">× ${d.quantity}</span>
+          <span class="mr-2">叫貨量: ${d.quantity}</span>
           <span class="font-semibold text-slate-700">$${d.subtotal}</span>
         </div>
       </div>
@@ -1177,14 +1248,14 @@ async function renderPurchaseOrders() {
           <span class="font-bold text-slate-900">${supMap.get(o.supplier_id) || '未知廠商'} <span class="text-xs text-slate-400">(${o.po_number})</span></span>
           <div class="flex items-center gap-2">
             <span class="text-[11px] px-2 py-0.5 rounded font-bold ${statusColorMap[o.status] || 'bg-slate-100'}">${statusText}</span>
-            <button onclick="openPurchaseModal('${o.id}')" class="text-indigo-600 font-semibold text-xs">修改</button>
+            <button onclick="openPurchaseModal('${o.id}')" class="text-indigo-600 font-semibold text-xs">編輯</button>
             <button onclick="deletePurchaseOrder('${o.id}')" class="text-red-400 hover:text-red-600 text-xs">刪除</button>
           </div>
         </div>
         <div class="border-t border-b py-2 space-y-1">${detailHtml}</div>
         <div class="flex justify-between items-center text-xs">
-          <span class="text-slate-400">時間: ${o.order_date.replace('T', ' ')}</span>
-          <span class="text-sm font-bold text-indigo-600">採購額: $${o.total_cost}</span>
+          <span class="text-slate-400">叫貨時間: ${o.order_date.replace('T', ' ')}</span>
+          <span class="text-sm font-bold text-indigo-600">採購支出: $${o.total_cost}</span>
         </div>
       </div>
     `;
@@ -1193,8 +1264,9 @@ async function renderPurchaseOrders() {
 }
 
 // ==========================================
-// 7. 團購一鍵彙總叫貨 (純動態缺額結算)
+// 7. 智慧彙整採購缺口產生
 // ==========================================
+
 async function generateConsolidatedPurchase() {
   const balanceMap = await computeRealtimeShortages();
   const neededItems = Array.from(balanceMap.values()).filter((x) => {
@@ -1202,12 +1274,12 @@ async function generateConsolidatedPurchase() {
   });
 
   if (neededItems.length === 0) {
-    return alert('目前所有有效訂單的品項數量均已滿足（已有叫貨或有現有庫存），無任何缺額！');
+    return alert('目前所有品項庫存與已叫貨量充足，無任何短缺口需補貨。');
   }
 
   const suppliers = await db.suppliers.where('is_deleted').equals(0).toArray();
   if (suppliers.length === 0) {
-    return alert('請先建立至少一位供應商資料');
+    return alert('請先於名冊管理建立至少一家合作廠商');
   }
 
   await refreshVariantsCache();
@@ -1219,13 +1291,13 @@ async function generateConsolidatedPurchase() {
   neededItems.forEach((item) => {
     addOrderItemRow('purchase', item.variantId, item.shortage, item.costPrice);
   });
-
   calculateTotal('purchase');
 }
 
 // ==========================================
-// 8. 視圖全量渲染與雲端同步
+// 8. 視圖更新、離線快取與同步
 // ==========================================
+
 function renderCurrentView() {
   renderProducts();
   renderSalesOrders();
@@ -1235,10 +1307,11 @@ function renderCurrentView() {
 
 document.getElementById('btn-sync').addEventListener('click', async () => {
   if (!AUTH_TOKEN) {
-    return alert('未授權：缺少 AUTH_SECRET');
+    return alert('缺少金鑰授權，請在網址附帶 key 參數注入 AUTH_SECRET');
   }
+
   const btn = document.getElementById('btn-sync');
-  btn.textContent = '同步中...';
+  btn.textContent = '雲端同步中...';
   btn.disabled = true;
 
   try {
@@ -1246,10 +1319,10 @@ document.getElementById('btn-sync').addEventListener('click', async () => {
       headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
     });
     if (!pullRes.ok) {
-      throw new Error('拉取失敗: ' + pullRes.statusText);
+      throw new Error('雲端拉取失敗: ' + pullRes.statusText);
     }
-    const pullData = await pullRes.json();
 
+    const pullData = await pullRes.json();
     if (pullData.data) {
       await db.transaction('rw', db.tables, async () => {
         for (const [table, rows] of Object.entries(pullData.data)) {
@@ -1289,12 +1362,12 @@ document.getElementById('btn-sync').addEventListener('click', async () => {
     }
 
     localStorage.setItem('lastUpdatedTimestamp', pushResult.newTimestamp);
-    alert('同步成功');
+    alert('雲端資料同步完成！');
     renderCurrentView();
   } catch (err) {
     alert('同步失敗: ' + err.message);
   } finally {
-    btn.textContent = '雲端同步';
+    btn.textContent = '雲端雙向同步';
     btn.disabled = false;
   }
 });
@@ -1307,15 +1380,16 @@ document.getElementById('btn-export-backup').addEventListener('click', async () 
     customers: await db.customers.toArray(),
     suppliers: await db.suppliers.toArray(),
     purchase_orders: await db.purchase_orders.toArray(),
-    purchase_items: await db.purchase_items.toArray(),
+    purchaseItems: await db.purchase_items.toArray(),
     sales_orders: await db.sales_orders.toArray(),
-    sales_items: await db.sales_items.toArray(),
+    salesItems: await db.sales_items.toArray(),
   };
+
   const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `團購系統備份_${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `團購進銷存備份_${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 });
