@@ -6,14 +6,14 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
-    <title>團購管理助手</title>
+    <title>團購管理系統</title>
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#2563eb" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
   </head>
   <body class="bg-slate-100 text-slate-800 antialiased select-none pb-24">
-    <!-- 頂部狀態列 -->
+    <!-- Header -->
     <header
       class="bg-blue-600 text-white p-4 sticky top-0 z-30 shadow-md flex justify-between items-center"
     >
@@ -23,270 +23,390 @@
           id="btn-export-backup"
           class="text-xs bg-blue-700 hover:bg-blue-800 px-3 py-1.5 rounded-lg border border-blue-400"
         >
-          JSON備份
+          JSON 匯出
         </button>
         <button
           id="btn-sync"
           class="text-xs bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg font-bold shadow"
         >
-          立即同步
+          雲端同步
         </button>
       </div>
     </header>
 
-    <!-- 頁面容器 -->
-    <main class="p-4 max-w-4xl mx-auto">
-      <!-- 模組區塊（透過 JS 動態切換） -->
-      <section id="view-products" class="tab-content block">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-lg font-bold">商品與即時庫存</h2>
+    <!-- Main Views -->
+    <main class="p-4 max-w-4xl mx-auto space-y-4">
+      <!-- 快捷批次彙總操作 -->
+      <section
+        class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center"
+      >
+        <div>
+          <div class="font-bold text-sm text-slate-900">團購批次處理流程</div>
+          <div class="text-xs text-slate-500">依未處理訂單自動彙總採購總量</div>
+        </div>
+        <button
+          onclick="generateConsolidatedPurchase()"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow"
+        >
+          一鍵彙總叫貨
+        </button>
+      </section>
+
+      <!-- 1. 商品列表分頁 -->
+      <section id="view-products" class="tab-content block space-y-3">
+        <div class="flex justify-between items-center">
+          <h2 class="text-lg font-bold">商品庫存管理</h2>
           <button
-            onclick="openModal('modal-product')"
-            class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow"
+            onclick="openProductModal()"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow"
           >
             + 新增商品
           </button>
         </div>
+        <div class="flex gap-2">
+          <input
+            id="search-product"
+            type="text"
+            placeholder="搜尋商品名稱/描述..."
+            class="flex-1 border p-2 rounded-lg text-xs bg-white"
+            oninput="renderProducts()"
+          />
+          <select
+            id="sort-product"
+            class="border p-2 rounded-lg text-xs bg-white"
+            onchange="renderProducts()"
+          >
+            <option value="name_asc">名稱 (A-Z)</option>
+            <option value="name_desc">名稱 (Z-A)</option>
+            <option value="date_desc">建立時間 (新到舊)</option>
+          </select>
+        </div>
         <div id="list-products" class="space-y-3"></div>
       </section>
 
-      <section id="view-orders" class="tab-content hidden">
-        <div class="flex justify-between items-center mb-4">
+      <!-- 2. 出貨訂單分頁 -->
+      <section id="view-orders" class="tab-content hidden space-y-3">
+        <div class="flex justify-between items-center">
           <h2 class="text-lg font-bold">客戶出貨訂單</h2>
           <button
-            onclick="openModal('modal-sales')"
-            class="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow"
+            onclick="openSalesModal()"
+            class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow"
           >
-            + 建立出貨單
+            + 新增訂單
           </button>
+        </div>
+        <div class="flex gap-2">
+          <input
+            id="search-sales"
+            type="text"
+            placeholder="搜尋客戶名稱/單號..."
+            class="flex-1 border p-2 rounded-lg text-xs bg-white"
+            oninput="renderSalesOrders()"
+          />
+          <select
+            id="filter-sales-status"
+            class="border p-2 rounded-lg text-xs bg-white"
+            onchange="renderSalesOrders()"
+          >
+            <option value="ALL">全部狀態</option>
+            <option value="PENDING">待處理</option>
+            <option value="PREPARING">配貨中</option>
+            <option value="SHIPPED">已出貨</option>
+            <option value="COMPLETED">已完成</option>
+            <option value="CANCELLED">已取消</option>
+          </select>
+          <select
+            id="sort-sales"
+            class="border p-2 rounded-lg text-xs bg-white"
+            onchange="renderSalesOrders()"
+          >
+            <option value="date_desc">訂單時間 (新到舊)</option>
+            <option value="date_asc">訂單時間 (舊到新)</option>
+            <option value="amount_desc">金額 (高到低)</option>
+          </select>
         </div>
         <div id="list-sales-orders" class="space-y-3"></div>
       </section>
 
-      <section id="view-purchases" class="tab-content hidden">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-lg font-bold">廠商叫貨單 (進貨)</h2>
+      <!-- 3. 叫貨單分頁 -->
+      <section id="view-purchases" class="tab-content hidden space-y-3">
+        <div class="flex justify-between items-center">
+          <h2 class="text-lg font-bold">供應商叫貨單</h2>
           <button
-            onclick="openModal('modal-purchase')"
-            class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow"
+            onclick="openPurchaseModal()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow"
           >
-            + 建立叫貨單
+            + 新增叫貨單
           </button>
+        </div>
+        <div class="flex gap-2">
+          <input
+            id="search-purchase"
+            type="text"
+            placeholder="搜尋廠商/採購單號..."
+            class="flex-1 border p-2 rounded-lg text-xs bg-white"
+            oninput="renderPurchaseOrders()"
+          />
+          <select
+            id="filter-purchase-status"
+            class="border p-2 rounded-lg text-xs bg-white"
+            onchange="renderPurchaseOrders()"
+          >
+            <option value="ALL">全部狀態</option>
+            <option value="PENDING">待採購</option>
+            <option value="ORDERED">已下單</option>
+            <option value="RECEIVED">已到貨</option>
+            <option value="CANCELLED">已取消</option>
+          </select>
+          <select
+            id="sort-purchase"
+            class="border p-2 rounded-lg text-xs bg-white"
+            onchange="renderPurchaseOrders()"
+          >
+            <option value="date_desc">叫貨時間 (新到舊)</option>
+            <option value="date_asc">叫貨時間 (舊到新)</option>
+            <option value="cost_desc">進貨額 (高到低)</option>
+          </select>
         </div>
         <div id="list-purchase-orders" class="space-y-3"></div>
       </section>
 
-      <section id="view-members" class="tab-content hidden">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-lg font-bold">會員與廠商通訊錄</h2>
+      <!-- 4. 名錄管理分頁 -->
+      <section id="view-members" class="tab-content hidden space-y-3">
+        <div class="flex justify-between items-center">
+          <h2 class="text-lg font-bold">名錄管理</h2>
           <div class="flex gap-2">
             <button
-              onclick="openModal('modal-customer')"
-              class="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
+              onclick="openCustomerModal()"
+              class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
             >
               + 客戶
             </button>
             <button
-              onclick="openModal('modal-supplier')"
-              class="bg-gray-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
+              onclick="openSupplierModal()"
+              class="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
             >
               + 供應商
             </button>
           </div>
         </div>
-        <div id="list-members" class="space-y-3"></div>
+        <div class="flex gap-2">
+          <input
+            id="search-member"
+            type="text"
+            placeholder="搜尋姓名/廠商/電話/地址..."
+            class="flex-1 border p-2 rounded-lg text-xs bg-white"
+            oninput="renderMembers()"
+          />
+          <select
+            id="sort-member"
+            class="border p-2 rounded-lg text-xs bg-white"
+            onchange="renderMembers()"
+          >
+            <option value="name_asc">名稱排序 (A-Z)</option>
+            <option value="date_desc">更新時間 (新到舊)</option>
+          </select>
+        </div>
+        <div class="space-y-4">
+          <div>
+            <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+              客戶通訊錄
+            </h3>
+            <div id="list-customers" class="space-y-2"></div>
+          </div>
+          <div>
+            <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+              供應商通訊錄
+            </h3>
+            <div id="list-suppliers" class="space-y-2"></div>
+          </div>
+        </div>
       </section>
     </main>
 
-    <!-- 底部大按鈕導航（適合長輩手指點擊） -->
+    <!-- Bottom Navigation Bar -->
     <nav
       class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 grid grid-cols-4 py-2 px-1 z-30 shadow-lg text-center"
     >
-      <button onclick="switchTab('view-products')" class="text-blue-600 flex flex-col items-center">
-        <span class="text-xl">📦</span>
-        <span class="text-xs font-bold mt-1">商品庫存</span>
-      </button>
-      <button onclick="switchTab('view-orders')" class="text-slate-500 flex flex-col items-center">
-        <span class="text-xl">📋</span>
-        <span class="text-xs font-bold mt-1">客戶訂單</span>
+      <button
+        id="nav-btn-view-products"
+        onclick="switchTab('view-products')"
+        class="text-blue-600 flex flex-col items-center"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+          />
+        </svg>
+        <span class="text-[11px] font-bold mt-1">商品庫</span>
       </button>
       <button
-        onclick="switchTab('view-purchases')"
-        class="text-slate-500 flex flex-col items-center"
+        id="nav-btn-view-orders"
+        onclick="switchTab('view-orders')"
+        class="text-slate-400 flex flex-col items-center"
       >
-        <span class="text-xl">🚚</span>
-        <span class="text-xs font-bold mt-1">向廠商叫貨</span>
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+          />
+        </svg>
+        <span class="text-[11px] font-bold mt-1">出貨訂單</span>
       </button>
-      <button onclick="switchTab('view-members')" class="text-slate-500 flex flex-col items-center">
-        <span class="text-xl">👥</span>
-        <span class="text-xs font-bold mt-1">名冊通訊</span>
+      <button
+        id="nav-btn-view-purchases"
+        onclick="switchTab('view-purchases')"
+        class="text-slate-400 flex flex-col items-center"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+          />
+        </svg>
+        <span class="text-[11px] font-bold mt-1">叫貨單</span>
+      </button>
+      <button
+        id="nav-btn-view-members"
+        onclick="switchTab('view-members')"
+        class="text-slate-400 flex flex-col items-center"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+          />
+        </svg>
+        <span class="text-[11px] font-bold mt-1">客戶/廠商</span>
       </button>
     </nav>
 
-    <!-- 新增商品 Modal -->
+    <!-- Modal: Product (新增 / 修改) -->
     <div
       id="modal-product"
       class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4"
     >
-      <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-        <h3 class="text-lg font-bold mb-4">新增商品</h3>
+      <div class="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <h3 id="modal-product-title" class="text-lg font-bold mb-3">商品資料維護</h3>
+        <input type="hidden" id="prod-id" />
         <div class="space-y-3">
           <input
             id="prod-name"
             type="text"
-            placeholder="商品名稱 (例: 日本大草莓)"
-            class="w-full border p-2.5 rounded-lg text-base"
+            placeholder="商品名稱 *"
+            class="w-full border p-2.5 rounded-lg text-sm"
           />
-          <input
-            id="prod-spec"
-            type="text"
-            placeholder="規格/單位 (例: 1箱 / 300g)"
-            class="w-full border p-2.5 rounded-lg text-base"
-          />
-          <div class="grid grid-cols-2 gap-2">
-            <input
-              id="prod-cost"
-              type="number"
-              placeholder="進貨成本"
-              class="w-full border p-2.5 rounded-lg text-base"
-            />
-            <input
-              id="prod-retail"
-              type="number"
-              placeholder="團購售價"
-              class="w-full border p-2.5 rounded-lg text-base"
-            />
+          <textarea
+            id="prod-desc"
+            rows="2"
+            placeholder="商品概述說明/團購文案"
+            class="w-full border p-2.5 rounded-lg text-sm"
+          ></textarea>
+
+          <div class="border-t pt-3">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-xs font-bold text-slate-700">規格與單位明細 (SKU)</span>
+              <button
+                type="button"
+                onclick="addProductVariantRow()"
+                class="text-xs text-blue-600 font-semibold"
+              >
+                + 增加規格
+              </button>
+            </div>
+            <div id="product-variants-container" class="space-y-2"></div>
           </div>
-          <input
-            id="prod-stock"
-            type="number"
-            placeholder="初始庫存數量"
-            class="w-full border p-2.5 rounded-lg text-base"
-          />
         </div>
         <div class="flex gap-2 mt-6">
           <button
             onclick="closeModal('modal-product')"
-            class="w-1/2 py-2.5 bg-slate-200 rounded-lg font-bold"
+            class="w-1/2 py-2 bg-slate-200 rounded-lg font-bold text-sm"
           >
             取消
           </button>
           <button
             onclick="saveProduct()"
-            class="w-1/2 py-2.5 bg-blue-600 text-white rounded-lg font-bold"
+            class="w-1/2 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm"
           >
-            儲存
-          </button>
-        </div>
-      </div>
-    </div>
-    <!-- 銷售訂單 Modal -->
-    <div
-      id="modal-sales"
-      class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4"
-    >
-      <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-        <h3 class="text-lg font-bold mb-4">建立出貨單</h3>
-        <div class="space-y-3">
-          <input
-            id="sales-cust-id"
-            type="text"
-            placeholder="客戶 ID / 名稱"
-            class="w-full border p-2.5 rounded-lg text-base"
-          />
-          <input
-            id="sales-amount"
-            type="number"
-            placeholder="總金額"
-            class="w-full border p-2.5 rounded-lg text-base"
-          />
-        </div>
-        <div class="flex gap-2 mt-6">
-          <button
-            onclick="closeModal('modal-sales')"
-            class="w-1/2 py-2.5 bg-slate-200 rounded-lg font-bold"
-          >
-            取消
-          </button>
-          <button
-            onclick="closeModal('modal-sales')"
-            class="w-1/2 py-2.5 bg-emerald-600 text-white rounded-lg font-bold"
-          >
-            儲存
+            儲存商品
           </button>
         </div>
       </div>
     </div>
 
-    <!-- 叫貨採購 Modal -->
-    <div
-      id="modal-purchase"
-      class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4"
-    >
-      <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-        <h3 class="text-lg font-bold mb-4">建立叫貨單</h3>
-        <div class="space-y-3">
-          <input
-            id="po-supplier-id"
-            type="text"
-            placeholder="供應商 ID / 名稱"
-            class="w-full border p-2.5 rounded-lg text-base"
-          />
-          <input
-            id="po-cost"
-            type="number"
-            placeholder="進貨金額"
-            class="w-full border p-2.5 rounded-lg text-base"
-          />
-        </div>
-        <div class="flex gap-2 mt-6">
-          <button
-            onclick="closeModal('modal-purchase')"
-            class="w-1/2 py-2.5 bg-slate-200 rounded-lg font-bold"
-          >
-            取消
-          </button>
-          <button
-            onclick="closeModal('modal-purchase')"
-            class="w-1/2 py-2.5 bg-indigo-600 text-white rounded-lg font-bold"
-          >
-            儲存
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 客戶 Modal -->
+    <!-- Modal: Customer (新增 / 修改) -->
     <div
       id="modal-customer"
       class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4"
     >
       <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-        <h3 class="text-lg font-bold mb-4">建立客戶</h3>
-        <div class="space-y-3">
+        <h3 id="modal-customer-title" class="text-lg font-bold mb-4">客戶資料</h3>
+        <input type="hidden" id="cust-id" />
+        <div class="space-y-2.5">
           <input
             id="cust-name"
             type="text"
-            placeholder="客戶名稱"
-            class="w-full border p-2.5 rounded-lg text-base"
+            placeholder="客戶姓名 *"
+            class="w-full border p-2 rounded-lg text-sm"
+          />
+          <div class="grid grid-cols-2 gap-2">
+            <input
+              id="cust-phone"
+              type="tel"
+              placeholder="手機號碼 *"
+              class="w-full border p-2 rounded-lg text-sm"
+            />
+            <input
+              id="cust-tel"
+              type="tel"
+              placeholder="市話 (選填)"
+              class="w-full border p-2 rounded-lg text-sm"
+            />
+          </div>
+          <input
+            id="cust-email"
+            type="email"
+            placeholder="電子郵件"
+            class="w-full border p-2 rounded-lg text-sm"
           />
           <input
-            id="cust-phone"
-            type="tel"
-            placeholder="聯絡電話"
-            class="w-full border p-2.5 rounded-lg text-base"
+            id="cust-address"
+            type="text"
+            placeholder="收件/配送地址"
+            class="w-full border p-2 rounded-lg text-sm"
+          />
+          <input
+            id="cust-birthday"
+            type="date"
+            placeholder="生日"
+            class="w-full border p-2 rounded-lg text-sm"
+          />
+          <input
+            id="cust-note"
+            type="text"
+            placeholder="備註 (例: 偏好取貨門市)"
+            class="w-full border p-2 rounded-lg text-sm"
           />
         </div>
-        <div class="flex gap-2 mt-6">
+        <div class="flex gap-2 mt-5">
           <button
             onclick="closeModal('modal-customer')"
-            class="w-1/2 py-2.5 bg-slate-200 rounded-lg font-bold"
+            class="w-1/2 py-2 bg-slate-200 rounded-lg font-bold text-sm"
           >
             取消
           </button>
           <button
-            onclick="closeModal('modal-customer')"
-            class="w-1/2 py-2.5 bg-blue-500 text-white rounded-lg font-bold"
+            onclick="saveCustomer()"
+            class="w-1/2 py-2 bg-blue-500 text-white rounded-lg font-bold text-sm"
           >
             儲存
           </button>
@@ -294,43 +414,207 @@
       </div>
     </div>
 
-    <!-- 供應商 Modal -->
+    <!-- Modal: Supplier (新增 / 修改) -->
     <div
       id="modal-supplier"
       class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4"
     >
       <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-        <h3 class="text-lg font-bold mb-4">建立供應商</h3>
-        <div class="space-y-3">
+        <h3 id="modal-supplier-title" class="text-lg font-bold mb-4">供應商資料</h3>
+        <input type="hidden" id="sup-id" />
+        <div class="space-y-2.5">
           <input
             id="sup-name"
             type="text"
-            placeholder="供應商名稱"
-            class="w-full border p-2.5 rounded-lg text-base"
+            placeholder="供應商名稱 *"
+            class="w-full border p-2 rounded-lg text-sm"
           />
           <input
-            id="sup-phone"
-            type="tel"
-            placeholder="聯絡電話"
-            class="w-full border p-2.5 rounded-lg text-base"
+            id="sup-contact"
+            type="text"
+            placeholder="聯絡人姓名"
+            class="w-full border p-2 rounded-lg text-sm"
+          />
+          <div class="grid grid-cols-2 gap-2">
+            <input
+              id="sup-tel"
+              type="tel"
+              placeholder="市話"
+              class="w-full border p-2 rounded-lg text-sm"
+            />
+            <input
+              id="sup-phone"
+              type="tel"
+              placeholder="手機"
+              class="w-full border p-2 rounded-lg text-sm"
+            />
+          </div>
+          <p class="text-[11px] text-amber-600 font-medium">* 市話或手機至少填寫一項</p>
+          <input
+            id="sup-email"
+            type="email"
+            placeholder="聯絡 Email"
+            class="w-full border p-2 rounded-lg text-sm"
+          />
+          <input
+            id="sup-address"
+            type="text"
+            placeholder="出貨地址"
+            class="w-full border p-2 rounded-lg text-sm"
           />
         </div>
-        <div class="flex gap-2 mt-6">
+        <div class="flex gap-2 mt-5">
           <button
             onclick="closeModal('modal-supplier')"
-            class="w-1/2 py-2.5 bg-slate-200 rounded-lg font-bold"
+            class="w-1/2 py-2 bg-slate-200 rounded-lg font-bold text-sm"
           >
             取消
           </button>
           <button
-            onclick="closeModal('modal-supplier')"
-            class="w-1/2 py-2.5 bg-gray-700 text-white rounded-lg font-bold"
+            onclick="saveSupplier()"
+            class="w-1/2 py-2 bg-gray-700 text-white rounded-lg font-bold text-sm"
           >
             儲存
           </button>
         </div>
       </div>
     </div>
+
+    <!-- Modal: Sales Order (新增 / 修改 Master-Detail) -->
+    <div
+      id="modal-sales"
+      class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4"
+    >
+      <div
+        class="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
+      >
+        <h3 id="modal-sales-title" class="text-lg font-bold mb-3">客戶出貨訂單維護</h3>
+        <input type="hidden" id="sales-order-id" />
+        <div class="space-y-3">
+          <div class="grid grid-cols-3 gap-2">
+            <select id="sales-customer-select" class="w-full border p-2 rounded-lg text-sm">
+              <option value="">選擇客戶 *</option>
+            </select>
+            <input
+              id="sales-order-datetime"
+              type="datetime-local"
+              step="1"
+              class="w-full border p-2 rounded-lg text-sm"
+            />
+            <select
+              id="sales-order-status"
+              class="w-full border p-2 rounded-lg text-sm font-semibold"
+            >
+              <option value="PENDING">待處理</option>
+              <option value="PREPARING">配貨中</option>
+              <option value="SHIPPED">已出貨</option>
+              <option value="COMPLETED">已完成</option>
+              <option value="CANCELLED">已取消</option>
+            </select>
+          </div>
+
+          <!-- Detail Items -->
+          <div class="border rounded-lg p-3 bg-slate-50 space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold text-slate-700">購買品項清單</span>
+              <button
+                type="button"
+                onclick="addOrderItemRow('sales')"
+                class="text-xs text-emerald-600 font-semibold"
+              >
+                + 增加品項
+              </button>
+            </div>
+            <div id="sales-items-container" class="space-y-2"></div>
+            <div class="text-right text-sm font-bold pt-2 border-t text-slate-700">
+              合計應收金額: $<span id="sales-total-amount">0</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 mt-5">
+          <button
+            onclick="closeModal('modal-sales')"
+            class="w-1/2 py-2 bg-slate-200 rounded-lg font-bold text-sm"
+          >
+            取消
+          </button>
+          <button
+            onclick="saveSalesOrder()"
+            class="w-1/2 py-2 bg-emerald-600 text-white rounded-lg font-bold text-sm"
+          >
+            儲存訂單
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Purchase Order (新增 / 修改 Master-Detail) -->
+    <div
+      id="modal-purchase"
+      class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4"
+    >
+      <div
+        class="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
+      >
+        <h3 id="modal-purchase-title" class="text-lg font-bold mb-3">供應商叫貨單維護</h3>
+        <input type="hidden" id="purchase-order-id" />
+        <div class="space-y-3">
+          <div class="grid grid-cols-3 gap-2">
+            <select id="purchase-supplier-select" class="w-full border p-2 rounded-lg text-sm">
+              <option value="">選擇供應商 *</option>
+            </select>
+            <input
+              id="purchase-order-datetime"
+              type="datetime-local"
+              step="1"
+              class="w-full border p-2 rounded-lg text-sm"
+            />
+            <select
+              id="purchase-order-status"
+              class="w-full border p-2 rounded-lg text-sm font-semibold"
+            >
+              <option value="PENDING">待採購</option>
+              <option value="ORDERED">已下單</option>
+              <option value="RECEIVED">已到貨</option>
+              <option value="CANCELLED">已取消</option>
+            </select>
+          </div>
+
+          <!-- Detail Items -->
+          <div class="border rounded-lg p-3 bg-slate-50 space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold text-slate-700">叫貨品項清單</span>
+              <button
+                type="button"
+                onclick="addOrderItemRow('purchase')"
+                class="text-xs text-indigo-600 font-semibold"
+              >
+                + 增加品項
+              </button>
+            </div>
+            <div id="purchase-items-container" class="space-y-2"></div>
+            <div class="text-right text-sm font-bold pt-2 border-t text-slate-700">
+              預計採購成本: $<span id="purchase-total-cost">0</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 mt-5">
+          <button
+            onclick="closeModal('modal-purchase')"
+            class="w-1/2 py-2 bg-slate-200 rounded-lg font-bold text-sm"
+          >
+            取消
+          </button>
+          <button
+            onclick="savePurchaseOrder()"
+            class="w-1/2 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm"
+          >
+            儲存叫貨單
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>
