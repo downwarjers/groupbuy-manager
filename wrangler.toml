@@ -1,0 +1,8 @@
+name = "groupbuy-manager"
+compatibility_date = "2026-09-24"
+pages_build_output_dir = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "groupbuy-db"
+database_id = "ffb66592-c735-4805-888e-a99874da0cc3"
