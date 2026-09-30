@@ -22,6 +22,8 @@ export async function onRequestGet({ request, env }) {
     const purchaseItems = await env.DB.prepare('SELECT * FROM purchase_items').all();
     const salesOrders = await env.DB.prepare('SELECT * FROM sales_orders').all();
     const salesItems = await env.DB.prepare('SELECT * FROM sales_items').all();
+    const fulfillments = await env.DB.prepare('SELECT * FROM fulfillments').all();
+    const fulfillmentItems = await env.DB.prepare('SELECT * FROM fulfillment_items').all();
 
     return new Response(
       JSON.stringify({
@@ -36,6 +38,8 @@ export async function onRequestGet({ request, env }) {
           purchaseItems: purchaseItems.results,
           salesOrders: salesOrders.results,
           salesItems: salesItems.results,
+          fulfillments: fulfillments.results,
+          fulfillmentItems: fulfillmentItems.results,
         },
       }),
       {
